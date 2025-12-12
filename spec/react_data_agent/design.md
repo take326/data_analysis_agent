@@ -251,7 +251,7 @@ class AgentState(TypedDict):
 - `clarifying_questions`: 不足情報を埋める質問（最小限）
 - `assumptions`: 仮定案（必要時。確認文言の材料）
 - `analysis_spec` / `plot_spec`: 実行仕様（JSON相当）。不要なら `None`
-- `messages`: `next_action=="ask"` の場合、質問文（AIMessage）を追加して終了してよい
+- `messages`: `next_action=="ask"` の場合、質問文（AIMessage）を追加してこのターンを終了してよい
 - `logs`: 判断要約（任意）
 
 #### 判断ルール（例）
@@ -262,24 +262,10 @@ class AgentState(TypedDict):
 - ユーザー要求を満たせた → `next_action="finalize"`
 - それ以外 → `next_action="act"`
 
-### ask（ノード分離しない）
+#### `next_action=="ask"` のときの挙動（ノード分離しない）
 
-#### 目的/責務
-
-- `next_action=="ask"` の場合に、ユーザーへ質問（または仮定案＋確認）を提示し、このターンを終了する。
-
-#### 入力（読むState）
-
-- `clarifying_questions`
-- `assumptions`
-
-#### 出力（書くState）
-
-- `messages`: 質問文（AIMessage）を追加
-- `logs`: 質問提示の要約
-
-#### 備考
-
+- `clarifying_questions`（最小限）を質問文として `messages` に追加して終了する。
+- 返答がない/なお不明確な場合は、`assumptions`（仮定案）を提示して「この仮定で進めてよいか」を確認する。
 - ユーザー回答は次ターンの `messages` として入り、次の `reason` が解釈する（同一invoke内で回答を待たない）。
 
 ### act
