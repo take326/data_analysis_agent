@@ -33,28 +33,26 @@ def _reset():
 
 def _render_report(report: dict):
     ro = ReportOutput.model_validate(report)
-    st.subheader("Report Summary")
+    st.markdown("**📊 Report Summary**")
     st.markdown(ro.summary)
 
     if ro.table_markdown:
-        st.subheader("Tables")
+        st.markdown("**📋 Tables**")
         for t in ro.table_markdown:
             st.markdown(t)
 
     if ro.plot_png_base64:
-        st.subheader("Plots")
+        st.markdown("**📈 Plots**")
         for b64 in ro.plot_png_base64:
             st.image(base64.b64decode(b64))
 
     if ro.json:
-        st.subheader("JSON")
+        st.markdown("**🔧 JSON**")
         for j in ro.json:
             st.json(j)
 
 
 _init_session()
-
-st.title("Data Analysis AI Agent (LangGraph prototype)")
 
 with st.sidebar:
     st.header("Inputs")
@@ -68,11 +66,12 @@ if uploaded is None:
     st.stop()
 
 df = pd.read_csv(uploaded)
-st.write("Preview")
-st.dataframe(df.head(20), use_container_width=True)
+st.subheader("Data Preview")
+with st.expander(f"Data Preview ({df.shape[0]} rows × {df.shape[1]} columns)", expanded=False):
+    st.dataframe(df, use_container_width=True)
 
-st.divider()
-st.subheader("Chat")
+if "processing" not in st.session_state:
+    st.session_state.processing = False
 
 if st.session_state.state is None:
     st.session_state.state = {
@@ -87,32 +86,46 @@ else:
     # dfは常に最新アップロードを優先（単一CSV前提）
     st.session_state.state["df"] = df
 
-user_text = st.chat_input("分析したいことを入力してください（例：クラスタリングして特徴を要約して）")
+state = st.session_state.state
+
+st.subheader("Chat")
+# メッセージ履歴を表示
+for msg in state.get("messages", []):
+    if isinstance(msg, HumanMessage):
+        with st.chat_message("user"):
+            st.write(msg.content)
+    else:
+        with st.chat_message("assistant"):
+            st.write(msg.content)
+
+# 実行コードを表示
+if state.get("last_code"):
+    with st.chat_message("assistant"):
+        with st.expander("📝 実行コード", expanded=False):
+            st.code(state["last_code"], language="python")
+
+# レポートを表示
+if state.get("report"):
+    with st.chat_message("assistant"):
+        _render_report(state["report"])
+
+# 処理中：スピナーを表示しながら実行
+if st.session_state.processing:
+    with st.chat_message("assistant"):
+        with st.spinner("分析中..."):
+            out = st.session_state.app.invoke(st.session_state.state)
+            st.session_state.state = out
+    st.session_state.processing = False
+    st.rerun()
+
+# チャット入力
+user_text = st.chat_input("分析内容を入力...")
 if user_text:
     st.session_state.state["messages"] = list(st.session_state.state["messages"]) + [
         HumanMessage(content=user_text)
     ]
+    st.session_state.processing = True
+    st.rerun()
 
-    # Invoke the graph until END
-    out = st.session_state.app.invoke(st.session_state.state)
-    st.session_state.state = out
-
-state = st.session_state.state
-
-# Render latest decision / outputs
-if state.get("decision"):
-    decision = ReasonDecision.model_validate(state["decision"])
-    st.caption(f"Decision: {decision.action}")
-    if decision.action == "ask_clarification":
-        st.info(decision.clarification_question or "確認したい点があります。")
-
-if state.get("last_exec"):
-    last_exec = ExecResult.model_validate(state["last_exec"])
-    with st.expander("Last exec (stdout/stderr)"):
-        st.text_area("stdout", last_exec.stdout, height=150)
-        st.text_area("stderr", last_exec.stderr, height=150)
-
-if state.get("report"):
-    _render_report(state["report"])
 
 
