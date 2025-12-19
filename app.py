@@ -11,7 +11,7 @@ import uuid
 
 import pandas as pd
 import streamlit as st
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from src.agent.graph import create_graph
 from src.agent.models import ExecResult, ReasonDecision, ReportOutput
@@ -25,10 +25,13 @@ def _init_session():
         st.session_state.app = create_graph()
     if "state" not in st.session_state:
         st.session_state.state = None
+    if "events" not in st.session_state:
+        st.session_state.events = []
 
 
 def _reset():
     st.session_state.state = None
+    st.session_state.events = []
 
 
 def _render_report(report: dict):
@@ -89,38 +92,62 @@ else:
 state = st.session_state.state
 
 st.subheader("Chat")
-# メッセージ履歴を表示
-for msg in state.get("messages", []):
-    if isinstance(msg, HumanMessage):
+# ChatGPT風: events を時系列で表示（LLM用messagesとは分離）
+for e in st.session_state.get("events", []):
+    etype = e.get("type")
+    if etype == "user":
         with st.chat_message("user"):
-            st.write(msg.content)
-    else:
+            st.write(e.get("text", ""))
+    elif etype == "assistant":
         with st.chat_message("assistant"):
-            st.write(msg.content)
+            st.write(e.get("text", ""))
+    elif etype == "code":
+        with st.chat_message("assistant"):
+            with st.expander("📝 実行コード", expanded=False):
+                st.code(e.get("code", ""), language="python")
+    elif etype == "report":
+        with st.chat_message("assistant"):
+            _render_report(e["report"])
 
-# 実行コードを表示
-if state.get("last_code"):
-    with st.chat_message("assistant"):
-        with st.expander("📝 実行コード", expanded=False):
-            st.code(state["last_code"], language="python")
-
-# レポートを表示
-if state.get("report"):
-    with st.chat_message("assistant"):
-        _render_report(state["report"])
+ # レポート表示は events 側に一本化（時系列の中に残す）
 
 # 処理中：スピナーを表示しながら実行
 if st.session_state.processing:
     with st.chat_message("assistant"):
         with st.spinner("分析中..."):
+            prev_report = st.session_state.state.get("report")
+            prev_last_code = st.session_state.state.get("last_code")
+            prev_messages = list(st.session_state.state.get("messages", []))
             out = st.session_state.app.invoke(st.session_state.state)
             st.session_state.state = out
+
+            # run_code で生成されたコードを履歴に積む（同一内容の重複は避ける）
+            new_last_code = out.get("last_code")
+            if new_last_code and new_last_code != prev_last_code:
+                last = st.session_state.events[-1] if st.session_state.events else None
+                if not (last and last.get("type") == "code" and last.get("code") == new_last_code):
+                    st.session_state.events.append({"type": "code", "code": new_last_code})
+
+            # ask_clarification 等で増えたAIMessageを events に積む（report_summaryタグは除外）
+            new_messages = list(out.get("messages", []))
+            if len(new_messages) > len(prev_messages):
+                for m in new_messages[len(prev_messages) :]:
+                    if isinstance(m, AIMessage) and m.additional_kwargs.get("source") == "report_summary":
+                        continue
+                    if isinstance(m, AIMessage):
+                        st.session_state.events.append({"type": "assistant", "text": m.content})
+
+            new_report = out.get("report")
+            if new_report and new_report != prev_report:
+                st.session_state.events.append({"type": "report", "report": new_report})
     st.session_state.processing = False
     st.rerun()
 
 # チャット入力
 user_text = st.chat_input("分析内容を入力...")
 if user_text:
+    # 表示用の履歴に積む（ChatGPT風）
+    st.session_state.events.append({"type": "user", "text": user_text})
     st.session_state.state["messages"] = list(st.session_state.state["messages"]) + [
         HumanMessage(content=user_text)
     ]
