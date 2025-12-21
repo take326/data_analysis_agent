@@ -25,13 +25,14 @@ def _init_session():
         st.session_state.app = create_graph()
     if "state" not in st.session_state:
         st.session_state.state = None
-    if "events" not in st.session_state:
-        st.session_state.events = []
+    # ChatGPT風に表示するチャット履歴（表示用。LLM用の state["messages"] とは分離）
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
 
 
 def _reset():
     st.session_state.state = None
-    st.session_state.events = []
+    st.session_state.chat_history = []
 
 
 def _render_report(report: dict):
@@ -92,8 +93,8 @@ else:
 state = st.session_state.state
 
 st.subheader("Chat")
-# ChatGPT風: events を時系列で表示（LLM用messagesとは分離）
-for e in st.session_state.get("events", []):
+# ChatGPT風: chat_history を時系列で表示（LLM用messagesとは分離）
+for e in st.session_state.get("chat_history", []):
     etype = e.get("type")
     if etype == "user":
         with st.chat_message("user"):
@@ -109,7 +110,7 @@ for e in st.session_state.get("events", []):
         with st.chat_message("assistant"):
             _render_report(e["report"])
 
- # レポート表示は events 側に一本化（時系列の中に残す）
+ # レポート表示は chat_history 側に一本化（時系列の中に残す）
 
 # 処理中：スピナーを表示しながら実行
 if st.session_state.processing:
@@ -118,28 +119,28 @@ if st.session_state.processing:
             prev_report = st.session_state.state.get("report")
             prev_last_code = st.session_state.state.get("last_code")
             prev_messages = list(st.session_state.state.get("messages", []))
-            out = st.session_state.app.invoke(st.session_state.state)
-            st.session_state.state = out
+            agent_result = st.session_state.app.invoke(st.session_state.state)
+            st.session_state.state = agent_result
 
             # run_code で生成されたコードを履歴に積む（同一内容の重複は避ける）
-            new_last_code = out.get("last_code")
+            new_last_code = agent_result.get("last_code")
             if new_last_code and new_last_code != prev_last_code:
-                last = st.session_state.events[-1] if st.session_state.events else None
+                last = st.session_state.chat_history[-1] if st.session_state.chat_history else None
                 if not (last and last.get("type") == "code" and last.get("code") == new_last_code):
-                    st.session_state.events.append({"type": "code", "code": new_last_code})
+                    st.session_state.chat_history.append({"type": "code", "code": new_last_code})
 
-            # ask_clarification 等で増えたAIMessageを events に積む（report_summaryタグは除外）
-            new_messages = list(out.get("messages", []))
+            # ask_clarification 等で増えたAIMessageを chat_history に積む（report_summaryタグは除外）
+            new_messages = list(agent_result.get("messages", []))
             if len(new_messages) > len(prev_messages):
                 for m in new_messages[len(prev_messages) :]:
                     if isinstance(m, AIMessage) and m.additional_kwargs.get("source") == "report_summary":
                         continue
                     if isinstance(m, AIMessage):
-                        st.session_state.events.append({"type": "assistant", "text": m.content})
+                        st.session_state.chat_history.append({"type": "assistant", "text": m.content})
 
-            new_report = out.get("report")
+            new_report = agent_result.get("report")
             if new_report and new_report != prev_report:
-                st.session_state.events.append({"type": "report", "report": new_report})
+                st.session_state.chat_history.append({"type": "report", "report": new_report})
     st.session_state.processing = False
     st.rerun()
 
@@ -147,7 +148,7 @@ if st.session_state.processing:
 user_text = st.chat_input("分析内容を入力...")
 if user_text:
     # 表示用の履歴に積む（ChatGPT風）
-    st.session_state.events.append({"type": "user", "text": user_text})
+    st.session_state.chat_history.append({"type": "user", "text": user_text})
     st.session_state.state["messages"] = list(st.session_state.state["messages"]) + [
         HumanMessage(content=user_text)
     ]
