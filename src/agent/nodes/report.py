@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 
 from dotenv import load_dotenv
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 
 from ..models import ExecResult, ReasonDecision, ReportOutput
@@ -40,6 +40,16 @@ def report_node(state: AgentState) -> dict:
         table_markdown=last_exec.table_markdown,
         json=last_exec.json,
     )
-    return {"report": report.model_dump()}
+    # report.summary を messages にも残す（LLMの過去コンテキスト用）。
+    # UIでは二重表示を避けるため、app.py 側でこのメッセージを非表示にする。
+    return {
+        "report": report.model_dump(),
+        "messages": [
+            AIMessage(
+                content=summary,
+                additional_kwargs={"source": "report_summary"},
+            )
+        ],
+    }
 
 
