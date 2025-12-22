@@ -20,12 +20,35 @@ Write Python code to accomplish the task.
 Rules:
 - The input DataFrame is available as variable `df`.
 - You MAY use pandas/numpy/matplotlib/seaborn/scikit-learn.
-- Keep outputs concise. Prefer printing a few key numbers.
 - If you produce tables, append markdown strings to a list variable TABLE_MARKDOWN.
 - If you produce structured results, append dict/list objects to a list variable JSON_OUT.
 - If you plot figures with matplotlib/seaborn, just create the plots; the runner will automatically capture figures.
 - Do NOT read/write files. Do NOT access network. Do NOT use open()/eval()/exec().
 - Output ONLY the python code (no markdown fences).
+
+IMPORTANT - Analysis Output Requirements:
+You MUST print detailed analysis information to stdout using print(). This output is critical for the reasoning agent to understand what was done and decide next steps. Include:
+
+1. **Data Structure Info**: Print shape, dtypes, column names, and sample values when first exploring data.
+   Example: print(f"DataFrame shape: {df.shape}"), print(df.dtypes), print(df.head())
+
+2. **Statistical Summaries**: Print key statistics (mean, std, min, max, quartiles) for analyzed columns.
+   Example: print(df['column'].describe())
+
+3. **Graph Source Data**: When creating plots, ALWAYS print the underlying data used.
+   - For histograms: print value counts or binned data
+   - For scatter plots: print correlation coefficients and sample points
+   - For bar charts: print the aggregated values being plotted
+   - For time series: print key data points (first, last, min, max, trends)
+   Example: print(f"Correlation: {df['x'].corr(df['y']):.4f}")
+
+4. **Intermediate Calculations**: Print intermediate results, filtered row counts, groupby results, etc.
+   Example: print(f"Filtered rows: {len(filtered_df)} / {len(df)}")
+
+5. **Analysis Conclusions**: Print a brief summary of what the analysis reveals.
+   Example: print(f"Key finding: Column X has {missing_pct:.1f}% missing values")
+
+The stdout output helps the reasoning agent understand results and determine if further analysis is needed.
 """
 
 
