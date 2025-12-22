@@ -55,3 +55,57 @@ class ReportOutput(BaseModel):
     json: list[Any] = Field(default_factory=list)
 
 
+# ========== Memory Models ==========
+
+from enum import Enum
+
+
+class MemoryAction(str, Enum):
+    """メモリ更新操作の種類"""
+    ADD = "add"
+    UPDATE = "update"
+    DELETE = "delete"
+    NONE = "none"
+
+
+class MemoryCategory(str, Enum):
+    """メモリのカテゴリ"""
+    ANALYSIS_STYLE = "analysis_style"          # 分析スタイルの好み
+    DOMAIN_KNOWLEDGE = "domain_knowledge"      # ドメイン知識レベル
+    DATA_PREFERENCE = "data_preference"        # よく扱うデータタイプ
+    REPORT_FORMAT = "report_format"            # レポート形式の好み
+    COMMUNICATION_STYLE = "communication_style"  # 文体・言語の好み
+    WORKFLOW = "workflow"                      # 作業フローの癖
+    OTHER = "other"                            # その他
+
+
+class MemoryItem(BaseModel):
+    """個別のメモリエントリ（CSVの1行に対応）"""
+    id: int = Field(..., ge=1, description="メモリID（1から始まる整数）")
+    category: MemoryCategory
+    content: str = Field(..., description="メモリの内容")
+
+
+class MemoryUpdate(BaseModel):
+    """単一のメモリ更新操作"""
+    action: MemoryAction
+    target_id: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="UPDATE/DELETE時の対象ID"
+    )
+    new_item: Optional[MemoryItem] = Field(
+        default=None,
+        description="ADD/UPDATE時の新しい内容"
+    )
+    reason: str = Field(..., description="この更新を行う理由")
+
+
+class MemoryUpdateDecision(BaseModel):
+    """LLMのメモリ更新判断（structured output用）"""
+    updates: list[MemoryUpdate] = Field(
+        default_factory=list,
+        description="実行する更新操作のリスト（変更なしは空リスト）"
+    )
+
+
