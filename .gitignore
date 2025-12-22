@@ -13,3 +13,6 @@ venv/
 
 # User Data
 user_data/
+
+# Temporary Data
+tmp/
