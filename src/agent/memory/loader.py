@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ..models import MemoryCategory, MemoryItem, MemoryUpdate, MemoryUpdateDecision
+from ..models import MemoryCategory, MemoryItem, MemoryUpdateDecision
 
 MEMORY_DIR = Path(__file__).parents[3] / "user_data"
 
