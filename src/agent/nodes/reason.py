@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
-from ..models import ExecResult, MemoryCategory, ReasonDecision
+from ..models import ExecResult, ReasonDecision
 from ..state import AgentState
 
 
