@@ -10,3 +10,9 @@ __pycache__/
 # Virtual Environment
 .venv/
 venv/
+
+# User Data
+user_data/
+
+# Temporary Data
+tmp/

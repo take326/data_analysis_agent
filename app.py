@@ -77,10 +77,15 @@ with st.expander(f"Data Preview ({df.shape[0]} rows × {df.shape[1]} columns)", 
 if "processing" not in st.session_state:
     st.session_state.processing = False
 
+# メモリを読み込み
+from src.agent.memory.loader import load_memory
+memories = [m.model_dump() for m in load_memory()]
+
 if st.session_state.state is None:
     st.session_state.state = {
         "messages": [],
         "df": df,
+        "memories": memories,
         "decision": None,
         "last_code": None,
         "last_exec": None,
@@ -89,6 +94,8 @@ if st.session_state.state is None:
 else:
     # dfは常に最新アップロードを優先（単一CSV前提）
     st.session_state.state["df"] = df
+    # メモリも毎回最新を読み込み
+    st.session_state.state["memories"] = memories
 
 state = st.session_state.state
 

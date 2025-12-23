@@ -15,6 +15,7 @@ def report_node(state: AgentState) -> dict:
     Reportノード（LLM）。
     decision.analysis_instruction と last_exec を根拠に summary を生成し、
     実行結果に表/グラフがあればそれも含めて返す。
+    ユーザーメモリも参照して、好みに合わせたレポートを生成する。
     """
     load_dotenv()
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -24,10 +25,22 @@ def report_node(state: AgentState) -> dict:
     last_exec = ExecResult.model_validate(state["last_exec"])
     analysis_instruction = decision.analysis_instruction or "(analysis_instruction not provided)"
 
+    # ユーザーメモリを参照（state経由）
+    memories = state.get("memories") or []
+    memory_instruction = ""
+    if memories:
+        memory_lines = [f"- [{m['category']}] {m['content']}" for m in memories]
+        memory_instruction = (
+            "\n\n## User Preferences (from memory)\n"
+            "Follow these user preferences when generating the report:\n"
+            + "\n".join(memory_lines)
+        )
+
     prompt = (
-        "Write a concise analysis report summary in Japanese.\n"
+        "Write a concise analysis report summary.\n"
         "Use the task and the execution outputs as evidence.\n"
-        "Include key numbers if present. Mention important caveats if obvious.\n\n"
+        "Include key numbers if present. Mention important caveats if obvious.\n"
+        f"{memory_instruction}\n\n"
         f"Task:\n{analysis_instruction}\n\n"
         f"stdout:\n{last_exec.stdout}\n\n"
         f"stderr:\n{last_exec.stderr}\n"

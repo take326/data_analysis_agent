@@ -53,6 +53,16 @@ def reason_node(state: AgentState) -> dict:
 
     hint = _df_schema_hint(df)
     context_msgs: list[BaseMessage] = [sys]
+
+    # ユーザーメモリをコンテキストに追加（state経由）
+    memories = state.get("memories") or []
+    if memories:
+        memory_lines = [f"- [{m['category']}] {m['content']}" for m in memories]
+        memory_text = "\n".join(memory_lines)
+        context_msgs.append(
+            SystemMessage(content=f"User Memory (learned preferences from past sessions):\n{memory_text}")
+        )
+
     context_msgs.extend(list(state["messages"]))
     context_msgs.append(SystemMessage(content=f"Data schema hint:\n{hint}"))
 

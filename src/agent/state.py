@@ -13,10 +13,14 @@ class AgentState(TypedDict):
     プロトタイプState（InMemory実行前提）。
     - df（DataFrame本体）をStateに保持する。
     - messages は reducer(add_messages) で追記する。
+    - memories はinvoke時に読み込んだユーザーメモリ。
     """
 
     messages: Annotated[Sequence[BaseMessage], add_messages]
     df: pd.DataFrame
+
+    # ユーザーメモリ（invoke時に読み込み）
+    memories: Optional[list[dict]]
 
     # Reasonの決定（Pydanticモデルをmodel_dumpしたdict）
     decision: Optional[dict]
