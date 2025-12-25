@@ -124,7 +124,7 @@ class MLConfig(BaseModel):
     numeric_features: list[str] = Field(..., description="数値変数のリスト")
     preprocessing_steps: list[str] = Field(
         default_factory=lambda: ["encode_categorical", "handle_missing"],
-        description="前処理ステップ"
+        description="前処理ステップ名のリスト（例: ['encode_categorical', 'handle_missing']）"
     )
     task_type: str = Field(..., description="'classification' or 'regression'")
 

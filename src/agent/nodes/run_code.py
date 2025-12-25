@@ -61,68 +61,33 @@ When ml_config is provided in the decision, you MUST follow these rules:
 3. **Missing Value Handling**: Use KNNImputer for numeric missing values
    - Categorical missing values are already handled in step 2
 4. **Train/Test Split**: Split data 80/20 with train_test_split
-5. **Model Training**: Train the model on training data
-6. **Evaluation**: Print test accuracy/score
-7. **Model Assignment**: Assign trained model to MODEL variable
+5. **Model Training**: Choose the best model for accuracy
 
-### Template Code:
+Model Selection Guidelines (prioritize ACCURACY):
+- For regression:
+  * RandomForestRegressor (default): High accuracy, robust, works well in most cases
+  * GradientBoostingRegressor: Highest accuracy, use if you need maximum performance
+  * LinearRegression: Only if data shows clear linear relationship
+  
+- For classification:
+  * RandomForestClassifier (default): High accuracy, robust, works well in most cases
+  * GradientBoostingClassifier: Highest accuracy, use if you need maximum performance
+  * LogisticRegression: Only if data shows clear linear relationship
 
-```python
-from sklearn.ensemble import RandomForestClassifier  # or Regressor
-from sklearn.preprocessing import LabelEncoder
-from sklearn.impute import KNNImputer
-from sklearn.model_selection import train_test_split
-import pandas as pd
+Default: Use RandomForest unless you have a specific reason to choose otherwise
 
-# 1. Select features (ONLY these)
-feature_cols = {ml_config.feature_names}
-X = df[feature_cols].copy()
-y = df[{ml_config.target_name}]
-
-# 2. Encode categorical features first
-categorical_cols = {ml_config.categorical_features}
-for col in categorical_cols:
-    le = LabelEncoder()
-    X[col] = le.fit_transform(X[col].fillna('missing'))
-
-# 3. Handle missing values with KNNImputer (more accurate)
-imputer = KNNImputer(n_neighbors=5)
-X_imputed = imputer.fit_transform(X)
-X = pd.DataFrame(X_imputed, columns=X.columns, index=X.index)
-
-# 4. Split data
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
-)
-
-# 5. Train model
-model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X_train, y_train)
-
-# 6. Evaluate
-train_score = model.score(X_train, y_train)
-test_score = model.score(X_test, y_test)
-print(f"Train score: {train_score:.3f}")
-print(f"Test score: {test_score:.3f}")
-
-# 7. Assign to MODEL (for future saving)
-MODEL = model
-MODEL_METADATA = {
-    'model_name': 'User-friendly name',
-    'feature_names': feature_cols,
-    'target_name': {ml_config.target_name},
-    'model_type': 'RandomForestClassifier',
-    'task_type': {ml_config.task_type}
-}
-```
+6. **Evaluation**: Print train and test scores with metric names
+   - For regression: Print "R² score" (e.g., "Train R² score: 0.95")
+   - For classification: Print "Accuracy" (e.g., "Train Accuracy: 0.95")
 
 ### Important Notes:
-- Do NOT use df.drop() to select features
-- Do NOT skip categorical encoding
-- Use KNNImputer for missing values (better than mean)
-- Encode categorical BEFORE imputation
-- ALWAYS split train/test
-- ALWAYS print evaluation metrics
+- Prioritize accuracy over simplicity when choosing models
+- RandomForest is the recommended default for most cases
+- Check ml_config.task_type to determine classification vs regression
+- Do NOT use df.drop() to select features - use ml_config.feature_names directly
+- Encode categorical features BEFORE using KNNImputer
+- ALWAYS split into train/test sets
+- ALWAYS print evaluation metrics (both train and test scores)
 """
 
 
@@ -132,7 +97,7 @@ def run_code_node(state: AgentState) -> dict:
     """
     load_dotenv()
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    llm = ChatOpenAI(model=model, temperature=0)
+    llm = ChatOpenAI(model=model, temperature=0, max_tokens=2048)  # 出力制限を追加
 
     decision = ReasonDecision.model_validate(state["decision"])
     if not decision.analysis_instruction:
@@ -145,6 +110,18 @@ def run_code_node(state: AgentState) -> dict:
         + decision.analysis_instruction
         + "\n"
     )
+    
+    # ml_configがある場合は追加
+    if decision.ml_config:
+        ml_config = decision.ml_config
+        prompt += (
+            f"\nML Configuration:\n"
+            f"- Target: {ml_config.target_name}\n"
+            f"- Features: {ml_config.feature_names}\n"
+            f"- Categorical features: {ml_config.categorical_features}\n"
+            f"- Numeric features: {ml_config.numeric_features}\n"
+            f"- Task type: {ml_config.task_type}\n"
+        )
 
     code = llm.invoke([HumanMessage(content=prompt)]).content
 
