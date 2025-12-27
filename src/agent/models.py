@@ -46,6 +46,11 @@ class ReasonDecision(BaseModel):
         default=None,
         description="Run Code に渡す自然言語タスク。目的/出力（表/グラフ）/使用列/手順を含む。",
     )
+    ml_config: Optional["MLConfig"] = Field(
+        default=None,
+        description="機械学習モデル作成時の設定（特徴量選択と前処理）",
+    )
+
 
 
 class ReportOutput(BaseModel):
@@ -107,5 +112,20 @@ class MemoryUpdateDecision(BaseModel):
         default_factory=list,
         description="実行する更新操作のリスト（変更なしは空リスト）"
     )
+
+
+# ========== ML Model Configuration ==========
+
+class MLConfig(BaseModel):
+    """機械学習モデルの設定（特徴量選択と前処理）"""
+    target_name: str = Field(..., description="目的変数名")
+    feature_names: list[str] = Field(..., description="使用する特徴量のリスト")
+    categorical_features: list[str] = Field(..., description="カテゴリ変数のリスト")
+    numeric_features: list[str] = Field(..., description="数値変数のリスト")
+    preprocessing_steps: list[str] = Field(
+        default_factory=lambda: ["encode_categorical", "handle_missing"],
+        description="前処理ステップ名のリスト（例: ['encode_categorical', 'handle_missing']）"
+    )
+    task_type: str = Field(..., description="'classification' or 'regression'")
 
 

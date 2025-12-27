@@ -49,6 +49,45 @@ You MUST print detailed analysis information to stdout using print(). This outpu
    Example: print(f"Key finding: Column X has {missing_pct:.1f}% missing values")
 
 The stdout output helps the reasoning agent understand results and determine if further analysis is needed.
+
+## Machine Learning Code Generation
+
+When ml_config is provided in the decision, you MUST follow these rules:
+
+### Required Steps:
+1. **Feature Selection**: Use ONLY the features in ml_config.feature_names
+2. **Categorical Encoding**: Encode ml_config.categorical_features with LabelEncoder
+   - Fill categorical missing values with 'missing' BEFORE encoding
+3. **Missing Value Handling**: Use KNNImputer for numeric missing values
+   - Categorical missing values are already handled in step 2
+4. **Train/Test Split**: Split data 80/20 with train_test_split
+5. **Model Training**: Choose the best model for accuracy
+
+Model Selection Guidelines (prioritize ACCURACY):
+- For regression:
+  * RandomForestRegressor (default): High accuracy, robust, works well in most cases
+  * GradientBoostingRegressor: Highest accuracy, use if you need maximum performance
+  * LinearRegression: Only if data shows clear linear relationship
+  
+- For classification:
+  * RandomForestClassifier (default): High accuracy, robust, works well in most cases
+  * GradientBoostingClassifier: Highest accuracy, use if you need maximum performance
+  * LogisticRegression: Only if data shows clear linear relationship
+
+Default: Use RandomForest unless you have a specific reason to choose otherwise
+
+6. **Evaluation**: Print train and test scores with metric names
+   - For regression: Print "R² score" (e.g., "Train R² score: 0.95")
+   - For classification: Print "Accuracy" (e.g., "Train Accuracy: 0.95")
+
+### Important Notes:
+- Prioritize accuracy over simplicity when choosing models
+- RandomForest is the recommended default for most cases
+- Check ml_config.task_type to determine classification vs regression
+- Do NOT use df.drop() to select features - use ml_config.feature_names directly
+- Encode categorical features BEFORE using KNNImputer
+- ALWAYS split into train/test sets
+- ALWAYS print evaluation metrics (both train and test scores)
 """
 
 
@@ -58,7 +97,7 @@ def run_code_node(state: AgentState) -> dict:
     """
     load_dotenv()
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    llm = ChatOpenAI(model=model, temperature=0)
+    llm = ChatOpenAI(model=model, temperature=0, max_tokens=2048)  # 出力制限を追加
 
     decision = ReasonDecision.model_validate(state["decision"])
     if not decision.analysis_instruction:
@@ -71,6 +110,18 @@ def run_code_node(state: AgentState) -> dict:
         + decision.analysis_instruction
         + "\n"
     )
+    
+    # ml_configがある場合は追加
+    if decision.ml_config:
+        ml_config = decision.ml_config
+        prompt += (
+            f"\nML Configuration:\n"
+            f"- Target: {ml_config.target_name}\n"
+            f"- Features: {ml_config.feature_names}\n"
+            f"- Categorical features: {ml_config.categorical_features}\n"
+            f"- Numeric features: {ml_config.numeric_features}\n"
+            f"- Task type: {ml_config.task_type}\n"
+        )
 
     code = llm.invoke([HumanMessage(content=prompt)]).content
 
