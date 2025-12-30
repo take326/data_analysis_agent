@@ -19,6 +19,9 @@ class ExecResult(BaseModel):
 
     error_type: Optional[str] = None
     error_message: Optional[str] = None
+    
+    # Phase 2: モデル保存
+    saved_model_id: Optional[str] = None
 
 
 class ExecPythonInput(BaseModel):
@@ -127,5 +130,20 @@ class MLConfig(BaseModel):
         description="前処理ステップ名のリスト（例: ['encode_categorical', 'handle_missing']）"
     )
     task_type: str = Field(..., description="'classification' or 'regression'")
+
+
+# ========== ML Model Metadata ==========
+
+class ModelMetadata(BaseModel):
+    """保存されたMLモデルのメタデータ"""
+    model_id: str = Field(..., description="モデルID（タイムスタンプベース）")
+    model_name: str = Field(..., description="ユーザーフレンドリーな名前")
+    feature_names: list[str] = Field(..., description="特徴量名のリスト")
+    target_name: str = Field(..., description="目的変数名")
+    model_type: str = Field(..., description="モデルタイプ（例: RandomForestClassifier）")
+    task_type: str = Field(..., description="'classification' or 'regression'")
+    created_at: str = Field(..., description="作成日時（ISO形式）")
+    train_score: Optional[float] = Field(default=None, description="訓練スコア")
+    test_score: Optional[float] = Field(default=None, description="テストスコア")
 
 
