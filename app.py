@@ -81,108 +81,109 @@ with st.sidebar:
     else:
         st.info("No models saved yet")
 
-if uploaded is None:
-    st.info("Upload a CSV to begin.")
-    st.stop()
-
-df = pd.read_csv(uploaded)
-
 if "processing" not in st.session_state:
     st.session_state.processing = False
 
-# メモリを読み込み
-from src.agent.memory.loader import load_memory
-memories = [m.model_dump() for m in load_memory()]
-
-if st.session_state.state is None:
-    st.session_state.state = {
-        "messages": [],
-        "df": df,
-        "memories": memories,
-        "decision": None,
-        "last_code": None,
-        "last_exec": None,
-        "report": None,
-    }
-else:
-    # dfは常に最新アップロードを優先（単一CSV前提）
-    st.session_state.state["df"] = df
-    # メモリも毎回最新を読み込み
-    st.session_state.state["memories"] = memories
-
-state = st.session_state.state
-
-# タブ構成
-tab1, tab2 = st.tabs(["� Analysis", " Prediction"])
+# タブ構成（CSVの有無に関わらず表示）
+tab1, tab2 = st.tabs(["💬 Analysis", "🔮 Prediction"])
 
 # Tab 1: Analysis (Data Preview + Chat)
 with tab1:
-    # Data Preview（コンパクト）
-    with st.expander(f"📊 Data Preview ({df.shape[0]} rows × {df.shape[1]} columns)", expanded=False):
-        st.dataframe(df, use_container_width=True)
-    
-    # Chat
-    # ChatGPT風: chat_history を時系列で表示（LLM用messagesとは分離）
-    for e in st.session_state.get("chat_history", []):
-        etype = e.get("type")
-        if etype == "user":
-            with st.chat_message("user"):
-                st.write(e.get("text", ""))
-        elif etype == "assistant":
-            with st.chat_message("assistant"):
-                st.write(e.get("text", ""))
-        elif etype == "code":
-            with st.chat_message("assistant"):
-                with st.expander("📝 実行コード", expanded=False):
-                    st.code(e.get("code", ""), language="python")
-        elif etype == "report":
-            with st.chat_message("assistant"):
-                _render_report(e["report"])
-
-     # レポート表示は chat_history 側に一本化（時系列の中に残す）
-
-    # 処理中：スピナーを表示しながら実行
-    if st.session_state.processing:
-        with st.chat_message("assistant"):
-            with st.spinner("分析中..."):
-                prev_report = st.session_state.state.get("report")
-                prev_last_code = st.session_state.state.get("last_code")
-                prev_messages = list(st.session_state.state.get("messages", []))
-                agent_result = st.session_state.app.invoke(st.session_state.state)
-                st.session_state.state = agent_result
-
-                # run_code で生成されたコードを履歴に積む（同一内容の重複は避ける）
-                new_last_code = agent_result.get("last_code")
-                if new_last_code and new_last_code != prev_last_code:
-                    last = st.session_state.chat_history[-1] if st.session_state.chat_history else None
-                    if not (last and last.get("type") == "code" and last.get("code") == new_last_code):
-                        st.session_state.chat_history.append({"type": "code", "code": new_last_code})
-
-                # ask_clarification 等で増えたAIMessageを chat_history に積む（report_summaryタグは除外）
-                new_messages = list(agent_result.get("messages", []))
-                if len(new_messages) > len(prev_messages):
-                    for m in new_messages[len(prev_messages) :]:
-                        if isinstance(m, AIMessage) and m.additional_kwargs.get("source") == "report_summary":
-                            continue
-                        if isinstance(m, AIMessage):
-                            st.session_state.chat_history.append({"type": "assistant", "text": m.content})
-
-                new_report = agent_result.get("report")
-                if new_report and new_report != prev_report:
-                    st.session_state.chat_history.append({"type": "report", "report": new_report})
-        st.session_state.processing = False
-        st.rerun()
-
-    # チャット入力
-    user_text = st.chat_input("分析内容を入力...")
-    if user_text:
-        # 表示用の履歴に積む（ChatGPT風）
-        st.session_state.chat_history.append({"type": "user", "text": user_text})
-        st.session_state.state["messages"] = list(st.session_state.state["messages"]) + [
-            HumanMessage(content=user_text)
-        ]
-        st.session_state.processing = True
-        st.rerun()
+    if uploaded is None:
+        st.info("📁 Upload a CSV file to start analysis.")
+    else:
+        df = pd.read_csv(uploaded)
+        
+        # メモリを読み込み
+        from src.agent.memory.loader import load_memory
+        memories = [m.model_dump() for m in load_memory()]
+        
+        if st.session_state.state is None:
+            st.session_state.state = {
+                "messages": [],
+                "df": df,
+                "memories": memories,
+                "decision": None,
+                "last_code": None,
+                "last_exec": None,
+                "report": None,
+            }
+        else:
+            # dfは常に最新アップロードを優先（単一CSV前提）
+            st.session_state.state["df"] = df
+            # メモリも毎回最新を読み込み
+            st.session_state.state["memories"] = memories
+        
+        state = st.session_state.state
+        
+        # Data Preview（コンパクト）
+        with st.expander(f"📊 Data Preview ({df.shape[0]} rows × {df.shape[1]} columns)", expanded=False):
+            st.dataframe(df, use_container_width=True)
+        
+        # Chat履歴（スクロール可能なコンテナ）
+        chat_container = st.container(height=500)
+        with chat_container:
+            # ChatGPT風: chat_history を時系列で表示（LLM用messagesとは分離）
+            for e in st.session_state.get("chat_history", []):
+                etype = e.get("type")
+                if etype == "user":
+                    with st.chat_message("user"):
+                        st.write(e.get("text", ""))
+                elif etype == "assistant":
+                    with st.chat_message("assistant"):
+                        st.write(e.get("text", ""))
+                elif etype == "code":
+                    with st.chat_message("assistant"):
+                        with st.expander("📝 実行コード", expanded=False):
+                            st.code(e.get("code", ""), language="python")
+                elif etype == "report":
+                    with st.chat_message("assistant"):
+                        _render_report(e["report"])
+            
+             # レポート表示は chat_history 側に一本化（時系列の中に残す）
+            
+            # 処理中：スピナーを表示しながら実行
+            if st.session_state.processing:
+                with st.chat_message("assistant"):
+                    with st.spinner("分析中..."):
+                        prev_report = st.session_state.state.get("report")
+                        prev_last_code = st.session_state.state.get("last_code")
+                        prev_messages = list(st.session_state.state.get("messages", []))
+                        agent_result = st.session_state.app.invoke(st.session_state.state)
+                        st.session_state.state = agent_result
+            
+                        # run_code で生成されたコードを履歴に積む（同一内容の重複は避ける）
+                        new_last_code = agent_result.get("last_code")
+                        if new_last_code and new_last_code != prev_last_code:
+                            last = st.session_state.chat_history[-1] if st.session_state.chat_history else None
+                            if not (last and last.get("type") == "code" and last.get("code") == new_last_code):
+                                st.session_state.chat_history.append({"type": "code", "code": new_last_code})
+            
+                        # ask_clarification 等で増えたAIMessageを chat_history に積む（report_summaryタグは除外）
+                        new_messages = list(agent_result.get("messages", []))
+                        if len(new_messages) > len(prev_messages):
+                            for m in new_messages[len(prev_messages) :]:
+                                if isinstance(m, AIMessage) and m.additional_kwargs.get("source") == "report_summary":
+                                    continue
+                                if isinstance(m, AIMessage):
+                                    st.session_state.chat_history.append({"type": "assistant", "text": m.content})
+            
+                        new_report = agent_result.get("report")
+                        if new_report and new_report != prev_report:
+                            st.session_state.chat_history.append({"type": "report", "report": new_report})
+                st.session_state.processing = False
+                st.rerun()
+        
+        # チャット入力（コンテナの外 = 下部に固定）
+        user_text = st.chat_input("分析内容を入力...")
+        if user_text:
+            # 表示用の履歴に積む（ChatGPT風）
+            st.session_state.chat_history.append({"type": "user", "text": user_text})
+            st.session_state.state["messages"] = list(st.session_state.state["messages"]) + [
+                HumanMessage(content=user_text)
+            ]
+            st.session_state.processing = True
+            st.rerun()
 
 # Tab 2: Prediction
 with tab2:
@@ -225,26 +226,33 @@ with tab2:
         for i, feature in enumerate(selected_model['feature_names']):
             with cols[i % 2]:
                 if feature in categorical_features:
-                    # カテゴリ変数: 数値入力 + ヘルプテキスト
+                    # カテゴリ変数: ドロップダウンで選択
                     mappings = categorical_mappings.get(feature, {})
                     if mappings:
                         # JSONは数値キーを文字列に変換するので、整数に戻す
                         mappings = {int(k): v for k, v in mappings.items()}
-                        help_text = ", ".join([f"{k}={v}" for k, v in sorted(mappings.items())])
-                        max_val = max(mappings.keys())
+                        # ラベル名のリストを作成（数値順）
+                        options = [mappings[k] for k in sorted(mappings.keys())]
+                        selected_label = st.selectbox(
+                            feature,
+                            options=options,
+                            index=0,
+                            key=f"input_{feature}"
+                        )
+                        # ラベル名から数値に逆変換
+                        label_to_value = {v: k for k, v in mappings.items()}
+                        value = label_to_value[selected_label]
                     else:
-                        help_text = "Categorical feature (encoded as numbers)"
-                        max_val = 10
-                    
-                    value = st.number_input(
-                        feature,
-                        min_value=0,
-                        max_value=max_val,
-                        value=0,
-                        step=1,
-                        key=f"input_{feature}",
-                        help=help_text
-                    )
+                        # マッピングがない場合は数値入力にフォールバック
+                        value = st.number_input(
+                            feature,
+                            min_value=0,
+                            max_value=10,
+                            value=0,
+                            step=1,
+                            key=f"input_{feature}",
+                            help="Categorical feature (encoded as numbers)"
+                        )
                 else:
                     # 数値変数: 通常の数値入力
                     value = st.number_input(
@@ -267,7 +275,11 @@ with tab2:
                 prediction = model.predict([input_values])
                 
                 # 結果表示
-                st.success(f"**{selected_model['target_name']}**: {prediction[0]:.4f}")
+                predicted_value = prediction[0]
+                if isinstance(predicted_value, float):
+                    st.success(f"**{selected_model['target_name']}**: {predicted_value:.4f}")
+                else:
+                    st.success(f"**{selected_model['target_name']}**: {predicted_value}")
                 
                 # 詳細情報
                 with st.expander("📊 Prediction Details"):

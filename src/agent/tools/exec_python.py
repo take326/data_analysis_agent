@@ -144,7 +144,7 @@ def exec_python(inp: ExecPythonInput) -> ExecPythonOutput:
     # matplotlib図は自動収集（コードがpltで描いていれば拾える）
     plot_png_base64 = _capture_matplotlib_figures()
     
-    # Phase 2: MODEL変数をチェックして自動保存
+    # MODEL変数をチェックして自動保存
     saved_model_id: Optional[str] = None
     if l.get("MODEL") is not None:  # ローカル変数をチェック
         try:
