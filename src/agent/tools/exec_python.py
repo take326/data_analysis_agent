@@ -11,6 +11,7 @@ from typing import Any, Optional
 import matplotlib.pyplot as plt
 
 from ..models import ExecPythonInput, ExecPythonOutput, ExecResult
+from .model_ops import save_model_automatically
 
 
 @dataclass(frozen=True)
@@ -100,7 +101,10 @@ def exec_python(inp: ExecPythonInput) -> ExecPythonOutput:
     stderr_buf = io.StringIO()
 
     start = time.time()
-    g: dict[str, Any] = {"__builtins__": __builtins__, **inp.context}
+    g: dict[str, Any] = {
+        "__builtins__": __builtins__,
+        **inp.context,
+    }
     l: dict[str, Any] = {}
 
     ok = True
@@ -139,6 +143,19 @@ def exec_python(inp: ExecPythonInput) -> ExecPythonOutput:
 
     # matplotlib図は自動収集（コードがpltで描いていれば拾える）
     plot_png_base64 = _capture_matplotlib_figures()
+    
+    # MODEL変数をチェックして自動保存
+    saved_model_id: Optional[str] = None
+    if l.get("MODEL") is not None:  # ローカル変数をチェック
+        try:
+            model = l["MODEL"]
+            metadata = l.get("MODEL_METADATA", {})
+            saved_model_id = save_model_automatically(model, metadata)
+            # 保存成功メッセージを追加
+            stdout = (stdout + "\n" if stdout else "") + f"✅ Model saved: {saved_model_id}"
+        except Exception as e:
+            # 保存失敗時はエラーメッセージを追加（実行自体は成功扱い）
+            stderr = (stderr + "\n" if stderr else "") + f"⚠️ Model save failed: {e}"
 
     return ExecPythonOutput(
         result=ExecResult(
@@ -150,6 +167,7 @@ def exec_python(inp: ExecPythonInput) -> ExecPythonOutput:
             json=json_out,
             error_type=err_type,
             error_message=err_msg,
+            saved_model_id=saved_model_id,
         )
     )
 

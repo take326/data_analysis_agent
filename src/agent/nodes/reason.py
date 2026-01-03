@@ -66,6 +66,7 @@ def reason_node(state: AgentState) -> dict:
             "- Names/Text: 'Name', 'Description', 'Comment' (free text)\n"
             "- High cardinality: categorical with >50 unique values (e.g., 'Ticket', 'Cabin')\n"
             "- Too many missing: >70% missing values\n"
+            "- Constant columns: only 1 unique value (e.g., all rows have same value)\n"
             "- Target variable itself\n"
             "\n"
             "**INCLUDE these columns:**\n"

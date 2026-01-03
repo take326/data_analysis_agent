@@ -80,6 +80,29 @@ Default: Use RandomForest unless you have a specific reason to choose otherwise
    - For regression: Print "R² score" (e.g., "Train R² score: 0.95")
    - For classification: Print "Accuracy" (e.g., "Train Accuracy: 0.95")
 
+7. **Model Assignment** (REQUIRED):
+   You MUST assign the trained model for automatic saving.
+   ALWAYS include these lines at the end of your code:
+   
+   # Build categorical mappings for prediction UI
+   cat_mappings = {}
+   for cat_feat in ml_config.categorical_features:
+       encoder = locals()[f'le_{cat_feat}']
+       cat_mappings[cat_feat] = {int(i): str(label) for i, label in enumerate(encoder.classes_)}
+   
+   MODEL = model
+   MODEL_METADATA = {
+       'model_name': 'Descriptive Model Name',
+       'feature_names': list(X.columns),
+       'target_name': target,
+       'model_type': type(model).__name__,
+       'task_type': ml_config.task_type,
+       'train_score': train_score,
+       'test_score': test_score,
+       'categorical_features': ml_config.categorical_features,
+       'categorical_mappings': cat_mappings
+   }
+
 ### Important Notes:
 - Prioritize accuracy over simplicity when choosing models
 - RandomForest is the recommended default for most cases
