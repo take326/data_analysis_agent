@@ -145,6 +145,35 @@ def run_code_node(state: AgentState) -> dict:
             f"- Numeric features: {ml_config.numeric_features}\n"
             f"- Task type: {ml_config.task_type}\n"
         )
+    
+    # CRITICAL: 前回のエラー情報をプロンプトに含める
+    last_exec = state.get("last_exec")
+    last_code = state.get("last_code")
+    
+    if last_exec is not None and not last_exec.get("ok", True):
+        # エラーが発生していた場合、詳細情報を追加
+        prompt += "\n" + "="*60 + "\n"
+        prompt += "⚠️  PREVIOUS EXECUTION FAILED - AVOID REPEATING THE SAME ERROR\n"
+        prompt += "="*60 + "\n\n"
+        
+        if last_code:
+            prompt += "Previous code that failed:\n"
+            prompt += "```python\n"
+            prompt += last_code
+            prompt += "\n```\n\n"
+        
+        prompt += "Error details:\n"
+        if last_exec.get("error_type"):
+            prompt += f"- Error type: {last_exec['error_type']}\n"
+        if last_exec.get("error_message"):
+            prompt += f"- Error message: {last_exec['error_message']}\n"
+        if last_exec.get("stderr"):
+            prompt += f"- Stderr output:\n{last_exec['stderr']}\n"
+        
+        prompt += "\n"
+        prompt += "IMPORTANT: Analyze the error above and rewrite the code to fix it.\n"
+        prompt += "Do NOT repeat the same mistake!\n"
+        prompt += "="*60 + "\n\n"
 
     code = llm.invoke([HumanMessage(content=prompt)]).content
 
