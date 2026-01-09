@@ -184,7 +184,7 @@ def reason_node(state: AgentState) -> dict:
     context_msgs.extend(list(state["messages"]))
     context_msgs.append(SystemMessage(content=f"Data schema hint:\n{hint}"))
 
-    if last_exec is not None:
+    if last_exec:
         # 画像データを除外してLLMに渡す（トークン削減のため）
         exec_info = {
             "ok": last_exec.ok,

@@ -13,7 +13,7 @@ from ..state import AgentState
 def report_node(state: AgentState) -> dict:
     """
     Reportノード（LLM）。
-    decision.analysis_instruction と last_exec を根拠に summary を生成し、
+    last_exec を根拠に summary を生成し、
     実行結果に表/グラフがあればそれも含めて返す。
     ユーザーメモリも参照して、好みに合わせたレポートを生成する。
     """
@@ -21,9 +21,7 @@ def report_node(state: AgentState) -> dict:
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     llm = ChatOpenAI(model=model, temperature=0)
 
-    decision = ReasonDecision.model_validate(state["decision"])
     last_exec = ExecResult.model_validate(state["last_exec"])
-    analysis_instruction = decision.analysis_instruction or "(analysis_instruction not provided)"
 
     # ユーザーメモリを参照（state経由）
     memories = state.get("memories") or []
@@ -37,13 +35,11 @@ def report_node(state: AgentState) -> dict:
         )
 
     prompt = (
-        "Write a concise analysis report summary.\n"
-        "Use the task and the execution outputs as evidence.\n"
-        "Include key numbers if present. Mention important caveats if obvious.\n"
+        "Write a concise analysis report summary based on the execution results below.\n"
+        "Describe what was analyzed and what was found.\n"
+        "Include key numbers, visualizations created, and important insights.\n"
         f"{memory_instruction}\n\n"
-        f"Task:\n{analysis_instruction}\n\n"
         f"stdout:\n{last_exec.stdout}\n\n"
-        f"stderr:\n{last_exec.stderr}\n"
     )
     summary = llm.invoke([HumanMessage(content=prompt)]).content
 
