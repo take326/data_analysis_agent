@@ -44,7 +44,7 @@ class ReasonDecision(BaseModel):
     # action == ask_clarification のとき必須
     clarification_question: Optional[str] = None
 
-    # action == run_code のとき必須（reportでも参照されるので、report時もセット推奨）
+    # action == run_code のとき必須
     analysis_instruction: Optional[str] = Field(
         default=None,
         description="Run Code に渡す自然言語タスク。目的/出力（表/グラフ）/使用列/手順を含む。",
