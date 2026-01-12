@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 
-from ..models import ExecResult, ReasonDecision, ReportOutput
+from ..models import ExecResult, MemoryCategory, ReasonDecision, ReportOutput
 from ..state import AgentState
 
 
@@ -24,14 +24,33 @@ def report_node(state: AgentState) -> dict:
     last_exec = ExecResult.model_validate(state["last_exec"])
 
     # ユーザーメモリを参照（state経由）
+    # Reportノードのプロンプトに渡す好みは、以下3カテゴリに限定する。
+    # - data_preference / report_format / communication_style
     memories = state.get("memories") or []
+    allowed_categories = {
+        MemoryCategory.DATA_PREFERENCE.value: "DATA_PREFERENCE",
+        MemoryCategory.REPORT_FORMAT.value: "REPORT_FORMAT",
+        MemoryCategory.COMMUNICATION_STYLE.value: "COMMUNICATION_STYLE",
+    }
+
+    preference_lines: list[str] = []
+    for memory_item in memories:
+        # state["memories"] は update_memory_node で model_dump() した dict の配列を想定
+        if not isinstance(memory_item, dict):
+            continue
+        category = memory_item.get("category")
+        memory_content = memory_item.get("content")
+        if category in allowed_categories and memory_content:
+            preference_lines.append(
+                f"- {allowed_categories[category]}: {memory_content}"
+            )
+
     memory_instruction = ""
-    if memories:
-        memory_lines = [f"- [{m['category']}] {m['content']}" for m in memories]
+    if preference_lines:
         memory_instruction = (
             "\n\n## User Preferences (from memory)\n"
             "Follow these user preferences when generating the report:\n"
-            + "\n".join(memory_lines)
+            + "\n".join(preference_lines)
         )
 
     prompt = (
