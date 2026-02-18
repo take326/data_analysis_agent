@@ -256,7 +256,7 @@ RouteAfterReasonOutput = Literal["run_code", "report", "__end__"]
 ### T-002: `exec_python`（exec実行ユーティリティ）
 
 #### 目的
-生成コードを実行し、`ExecResult` を返す。出力制限とタイムアウトを提供する。
+生成コードを実行し、`ExecResult` を返す。出力制限を提供する。
 
 ```python
 from pydantic import BaseModel, Field
@@ -264,7 +264,6 @@ from pydantic import BaseModel, Field
 
 class ExecPythonInput(BaseModel):
     code: str = Field(..., description="実行するPythonコード")
-    timeout_sec: int = Field(default=180, ge=1, le=300, description="実行タイムアウト秒（デフォルト180秒）")
     max_output_chars: int = Field(default=20000, ge=1000, le=200000, description="stdout/stderr合計の上限")
 
     # 実行コンテキスト（例: df を渡す）

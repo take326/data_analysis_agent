@@ -27,6 +27,6 @@ def create_graph():
     g.add_edge("run_code", "reason")
     g.add_edge("report", END)
 
-    return g.compile()
+    return g.compile(debug=False)  # LangSmithのAgentStateシリアライズを無効化
 
 

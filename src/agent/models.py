@@ -15,7 +15,6 @@ class ExecResult(BaseModel):
     # 生成物
     plot_png_base64: list[str] = Field(default_factory=list)
     table_markdown: list[str] = Field(default_factory=list)
-    json: list[Any] = Field(default_factory=list)
 
     error_type: Optional[str] = None
     error_message: Optional[str] = None
@@ -26,7 +25,6 @@ class ExecResult(BaseModel):
 
 class ExecPythonInput(BaseModel):
     code: str = Field(..., description="実行するPythonコード")
-    timeout_sec: int = Field(default=180, ge=1, le=300, description="実行タイムアウト秒（簡易）")
     max_output_chars: int = Field(default=20000, ge=1000, le=200000, description="stdout/stderr合計の上限")
     context: dict[str, Any] = Field(default_factory=dict, description="execのグローバルに渡す変数")
 
@@ -60,7 +58,15 @@ class ReportOutput(BaseModel):
     summary: str
     plot_png_base64: list[str] = Field(default_factory=list)
     table_markdown: list[str] = Field(default_factory=list)
-    json: list[Any] = Field(default_factory=list)
+
+
+class SavedReport(ReportOutput):
+    """保存用レポート（ReportOutputにメタデータを追加）"""
+    id: str  # report_YYYYMMDD_HHMMSS
+    timestamp: str  # ISO format
+    dataset_id: str  # カラム構造のハッシュ値
+    dataset_display_name: str  # 表示用名前
+    title: str  # レポートタイトル（分析内容を表す）
 
 
 # ========== Memory Models ==========

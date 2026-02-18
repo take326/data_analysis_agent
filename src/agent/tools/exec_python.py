@@ -4,7 +4,6 @@ import ast
 import base64
 import contextlib
 import io
-import time
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -34,8 +33,7 @@ _BANNED_CALLS = {"open", "__import__", "eval", "exec", "compile", "input"}
 
 def _guard_code(code: str) -> None:
     """
-    簡易ガード（プロトタイプ）。
-    - 同一プロセスexecは完全にサンドボックス化できないため、危険度の高いものを雑に拒否する。
+    コード実行において危険度の高いものを拒否する。
     """
     try:
         tree = ast.parse(code)
@@ -77,7 +75,6 @@ def _capture_matplotlib_figures(max_figs: int = 5) -> list[str]:
         fig.savefig(buf, format="png", bbox_inches="tight")
         buf.seek(0)
         out.append(base64.b64encode(buf.read()).decode("ascii"))
-    # 後片付け（Streamlitでメモリリークしやすい）
     plt.close("all")
     return out
 
@@ -87,7 +84,6 @@ def exec_python(inp: ExecPythonInput) -> ExecPythonOutput:
     Pythonコードを同一プロセスでexecし、stdout/stderrと簡易成果物を返す。
 
     制約:
-    - 厳密なタイムアウト強制停止は困難（別プロセスでないため）。
     - プロトタイプとして「出力上限」「簡易ガード」「図の自動収集」を行う。
     """
     try:
@@ -100,7 +96,6 @@ def exec_python(inp: ExecPythonInput) -> ExecPythonOutput:
     stdout_buf = io.StringIO()
     stderr_buf = io.StringIO()
 
-    start = time.time()
     g: dict[str, Any] = {
         "__builtins__": __builtins__,
         **inp.context,
@@ -119,27 +114,15 @@ def exec_python(inp: ExecPythonInput) -> ExecPythonOutput:
         err_type = type(e).__name__
         err_msg = str(e)
 
-    elapsed = time.time() - start
     stdout = stdout_buf.getvalue()
     stderr = stderr_buf.getvalue()
 
-    # 「簡易」タイムアウト（実際には止められないので、超過を失敗として扱うだけ）
-    if elapsed > inp.timeout_sec:
-        ok = False
-        err_type = err_type or "TimeoutError"
-        err_msg = err_msg or f"Exceeded {inp.timeout_sec}s"
-        stderr = (stderr + "\n" if stderr else "") + f"[timeout] elapsed={elapsed:.2f}s"
-
     stdout, stderr = _cap_output(stdout, stderr, inp.max_output_chars)
 
-    # 成果物プロトコル（任意）: TABLE_MARKDOWN / JSON_OUT
+    # 成果物プロトコル（任意）: TABLE_MARKDOWN
     table_markdown: list[str] = []
     if isinstance(l.get("TABLE_MARKDOWN"), list):
         table_markdown = [x for x in l["TABLE_MARKDOWN"] if isinstance(x, str)]
-
-    json_out: list[Any] = []
-    if isinstance(l.get("JSON_OUT"), list):
-        json_out = l["JSON_OUT"]
 
     # matplotlib図は自動収集（コードがpltで描いていれば拾える）
     plot_png_base64 = _capture_matplotlib_figures()
@@ -164,7 +147,6 @@ def exec_python(inp: ExecPythonInput) -> ExecPythonOutput:
             stderr=stderr,
             plot_png_base64=plot_png_base64,
             table_markdown=table_markdown,
-            json=json_out,
             error_type=err_type,
             error_message=err_msg,
             saved_model_id=saved_model_id,
