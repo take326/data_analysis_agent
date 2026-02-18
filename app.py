@@ -50,11 +50,6 @@ def _render_report(report: dict):
         for b64 in ro.plot_png_base64:
             st.image(base64.b64decode(b64))
 
-    if ro.json:
-        st.markdown("**🔧 JSON**")
-        for j in ro.json:
-            st.json(j)
-
 
 _init_session()
 
@@ -85,7 +80,7 @@ if "processing" not in st.session_state:
     st.session_state.processing = False
 
 # タブ構成（CSVの有無に関わらず表示）
-tab1, tab2 = st.tabs(["💬 Analysis", "🔮 Prediction"])
+tab1, tab2, tab3 = st.tabs(["💬 Analysis", "🔮 Prediction", "📄 Document Search"])
 
 # Tab 1: Analysis (Data Preview + Chat)
 with tab1:
@@ -93,6 +88,8 @@ with tab1:
         st.info("📁 Upload a CSV file to start analysis.")
     else:
         df = pd.read_csv(uploaded)
+        
+        st.markdown("---")
         
         # メモリを読み込み
         from src.agent.memory.loader import load_memory
@@ -102,15 +99,18 @@ with tab1:
             st.session_state.state = {
                 "messages": [],
                 "df": df,
+                "uploaded_filename": uploaded.name,  # ファイル名を保存
                 "memories": memories,
                 "decision": None,
                 "last_code": None,
                 "last_exec": None,
                 "report": None,
+                "code_run_count": 0,  # 無限ループ防止用カウンター
             }
         else:
             # dfは常に最新アップロードを優先（単一CSV前提）
             st.session_state.state["df"] = df
+            st.session_state.state["uploaded_filename"] = uploaded.name  # ファイル名を更新
             # メモリも毎回最新を読み込み
             st.session_state.state["memories"] = memories
         
@@ -179,9 +179,13 @@ with tab1:
         if user_text:
             # 表示用の履歴に積む（ChatGPT風）
             st.session_state.chat_history.append({"type": "user", "text": user_text})
+            
+            # Stateに保存
             st.session_state.state["messages"] = list(st.session_state.state["messages"]) + [
                 HumanMessage(content=user_text)
             ]
+            st.session_state.state["code_run_count"] = 0  # 新しいリクエストなのでカウンターリセット
+            
             st.session_state.processing = True
             st.rerun()
 
@@ -292,5 +296,132 @@ with tab2:
                 st.error(f"❌ Prediction failed: {e}")
 
 
+# Tab 3: Document Search
+with tab3:
+    from src.agent.tools.document_search import search_documents_with_relevance
+    from src.agent.tools.document_ops import DOCUMENTS_FAISS_DIR
+    
+    st.header("📄 Document Search")
+    st.markdown("Upload and search through documents for relevant information")
 
+    # rerun（検索/ボタン押下/入力）で同じアップロードPDFを再処理しないためのメモ
+    if "indexed_doc_hashes" not in st.session_state:
+        st.session_state.indexed_doc_hashes = set()
+    
+    # Document Upload Section
+    st.subheader("📤 Upload Documents")
+    uploaded_docs = st.file_uploader(
+        "Upload documents to index",
+        type=["pdf"],
+        accept_multiple_files=True,
+        help="PDF (.pdf) files",
+        key="doc_upload"
+    )
+    
+    if uploaded_docs:
+        from src.agent.tools.document_ops import DOCUMENTS_DIR
+        from src.agent.tools.azure_di_rag import process_pdf
+        import hashlib
 
+        # インデックスが空なら、取り込み済みキャッシュもクリア（リセット時の整合用）
+        if not any(DOCUMENTS_FAISS_DIR.glob("*/index.faiss")):
+            st.session_state.indexed_doc_hashes.clear()
+        
+        for doc_file in uploaded_docs:
+            # Streamlit rerun で同一ファイルが何度も処理されないように内容hashで判定
+            data = doc_file.getvalue()
+            content_hash = hashlib.sha256(data).hexdigest()
+            cache_key = f"{doc_file.name}:{content_hash}"
+            if cache_key in st.session_state.indexed_doc_hashes:
+                continue
+
+            # Save file
+            save_path = DOCUMENTS_DIR / doc_file.name
+            save_path.write_bytes(data)
+            
+            # Process with Azure DI for PDFs
+            if save_path.suffix.lower() != ".pdf":
+                st.error(f"❌ Unsupported file type: {save_path.suffix} (PDF only)")
+                continue
+
+            with st.spinner(f"Processing {doc_file.name} with Azure Document Intelligence..."):
+                try:
+                    # Azure DIで処理（ベクトルストアとdocstoreを自動保存）
+                    vectorstore, docstore = process_pdf(save_path)
+                    st.success(f"✅ {doc_file.name} processed successfully with Azure DI")
+                    st.info(f"📊 Extracted: {len(docstore)} items (tables, figures, text)")
+                    st.session_state.indexed_doc_hashes.add(cache_key)
+                except Exception as e:
+                    st.error(f"❌ Failed to process {doc_file.name}: {e}")
+
+    
+    st.markdown("---")
+    
+    # Document Search Section
+    st.subheader("🔍 Search Documents")
+    
+    # Check if documents exist
+    has_pdf_faiss_index = any(DOCUMENTS_FAISS_DIR.glob("*/index.faiss"))
+    if not has_pdf_faiss_index:
+        st.info("📭 No documents indexed yet. Upload documents above to enable search.")
+    else:
+        with st.form("doc_search_form", clear_on_submit=False):
+            query = st.text_input(
+                "Enter your search query:",
+                key="doc_search_query",
+                placeholder="e.g., What are the customer feedback themes?",
+            )
+            submitted = st.form_submit_button("🔍 Search")
+
+        if submitted:
+            if query:
+                with st.spinner("Searching documents and generating answer..."):
+                    from src.agent.tools.document_search import generate_answer_from_documents
+
+                    sources = search_documents_with_relevance(query)
+
+                    if sources:
+                        # Generate answer using LLM
+                        answer = generate_answer_from_documents(query, sources)
+
+                        # Display answer
+                        st.markdown("### 💬 Answer")
+                        st.markdown(answer)
+
+                        # Display sources
+                        st.markdown("---")
+                        st.markdown("### 📚 Sources")
+
+                        for i, source in enumerate(sources, 1):
+                            score = source.get("relevance_score", 0)
+                            source_file = source.get("filename", "Unknown")
+                            source_type = source.get("type", "text")
+                            page = source.get("page", "N/A")
+                            text = source.get("text", "")
+                            image_path = source.get("image_path")
+                            caption = source.get("caption")
+
+                            # タイプに応じたアイコン
+                            type_icon = {"table": "📊", "figure": "🖼️", "text": "📝"}.get(source_type, "📄")
+
+                            with st.expander(
+                                f"{type_icon} Source {i}: {source_file} (Page {page}, Type: {source_type}, Relevance: {score:.2f})"
+                            ):
+                                if source_type == "table":
+                                    st.markdown("**Type:** Table (Markdown)")
+                                    st.markdown(text)
+                                elif source_type == "figure":
+                                    from pathlib import Path
+
+                                    st.markdown("**Type:** Figure")
+                                    if caption:
+                                        st.markdown(f"**Caption:** {caption}")
+                                    if image_path and Path(image_path).exists():
+                                        st.image(image_path)
+                                    st.markdown(text)
+                                else:
+                                    st.markdown(text)
+                    else:
+                        st.info("No relevant documents found. Try a different query.")
+            else:
+                st.warning("Please enter a search query")

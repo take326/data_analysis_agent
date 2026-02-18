@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import json
 import os
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -21,33 +21,13 @@ Rules:
 - The input DataFrame is available as variable `df`.
 - You MAY use pandas/numpy/matplotlib/seaborn/scikit-learn.
 - If you produce tables, append markdown strings to a list variable TABLE_MARKDOWN.
-- If you produce structured results, append dict/list objects to a list variable JSON_OUT.
 - If you plot figures with matplotlib/seaborn, just create the plots; the runner will automatically capture figures.
 - Do NOT read/write files. Do NOT access network. Do NOT use open()/eval()/exec().
 - Output ONLY the python code (no markdown fences).
 
 IMPORTANT - Analysis Output Requirements:
-You MUST print detailed analysis information to stdout using print(). This output is critical for the reasoning agent to understand what was done and decide next steps. Include:
-
-1. **Data Structure Info**: Print shape, dtypes, column names, and sample values when first exploring data.
-   Example: print(f"DataFrame shape: {df.shape}"), print(df.dtypes), print(df.head())
-
-2. **Statistical Summaries**: Print key statistics (mean, std, min, max, quartiles) for analyzed columns.
-   Example: print(df['column'].describe())
-
-3. **Graph Source Data**: When creating plots, ALWAYS print the underlying data used.
-   - For histograms: print value counts or binned data
-   - For scatter plots: print correlation coefficients and sample points
-   - For bar charts: print the aggregated values being plotted
-   - For time series: print key data points (first, last, min, max, trends)
-   Example: print(f"Correlation: {df['x'].corr(df['y']):.4f}")
-
-4. **Intermediate Calculations**: Print intermediate results, filtered row counts, groupby results, etc.
-   Example: print(f"Filtered rows: {len(filtered_df)} / {len(df)}")
-
-5. **Analysis Conclusions**: Print a brief summary of what the analysis reveals.
-   Example: print(f"Key finding: Column X has {missing_pct:.1f}% missing values")
-
+You will be provided a `df_schema` summary (columns/dtypes/missing/top_values).
+Print key intermediate results and conclusions so the agent can verify correctness.
 The stdout output helps the reasoning agent understand results and determine if further analysis is needed.
 
 ## Machine Learning Code Generation
@@ -66,12 +46,10 @@ When ml_config is provided in the decision, you MUST follow these rules:
 Model Selection Guidelines (prioritize ACCURACY):
 - For regression:
   * RandomForestRegressor (default): High accuracy, robust, works well in most cases
-  * GradientBoostingRegressor: Highest accuracy, use if you need maximum performance
   * LinearRegression: Only if data shows clear linear relationship
   
 - For classification:
   * RandomForestClassifier (default): High accuracy, robust, works well in most cases
-  * GradientBoostingClassifier: Highest accuracy, use if you need maximum performance
   * LogisticRegression: Only if data shows clear linear relationship
 
 Default: Use RandomForest unless you have a specific reason to choose otherwise
@@ -127,60 +105,68 @@ def run_code_node(state: AgentState) -> dict:
         # ここに来るのは設計上の想定外だが、最低限のフォールバック
         raise ValueError("analysis_instruction is required for run_code")
 
-    prompt = (
-        _CODE_SYSTEM_PROMPT
-        + "\nTask (natural language):\n"
-        + decision.analysis_instruction
-        + "\n"
-    )
-    
-    # ml_configがある場合は追加
-    if decision.ml_config:
-        ml_config = decision.ml_config
-        prompt += (
-            f"\nML Configuration:\n"
-            f"- Target: {ml_config.target_name}\n"
-            f"- Features: {ml_config.feature_names}\n"
-            f"- Categorical features: {ml_config.categorical_features}\n"
-            f"- Numeric features: {ml_config.numeric_features}\n"
-            f"- Task type: {ml_config.task_type}\n"
-        )
-    
-    # CRITICAL: 前回のエラー情報をプロンプトに含める
+    df: pd.DataFrame = state["df"]
+
+    # df_schema is produced in reason_node and stored in state; use it to ground code generation.
+    df_schema = state.get("df_schema") or {}
+
+    # Check if this is a retry (error from previous attempt)
     last_exec = state.get("last_exec")
     last_code = state.get("last_code")
     
-    if last_exec is not None and not last_exec.get("ok", True):
-        # エラーが発生していた場合、詳細情報を追加
-        prompt += "\n" + "="*60 + "\n"
-        prompt += "⚠️  PREVIOUS EXECUTION FAILED - AVOID REPEATING THE SAME ERROR\n"
-        prompt += "="*60 + "\n\n"
-        
+    # Build prompt in readable sections (titles only; no separator bars)
+    parts: list[str] = []
+    parts.append(_CODE_SYSTEM_PROMPT)
+    parts.append(f"Task (natural language):\n{decision.analysis_instruction}")
+
+    # ML config (optional, but required for the ML rules in _CODE_SYSTEM_PROMPT)
+    if decision.ml_config is not None:
+        parts.append(
+            "ML_CONFIG (JSON):\n" + json.dumps(decision.ml_config.model_dump(), ensure_ascii=False)
+        )
+
+    # DF schema (ground truth for column names/types/missing/cardinality)
+    parts.append("DF_SCHEMA (JSON):\n" + json.dumps(df_schema, ensure_ascii=False))
+
+    parts.append(
+        "\n".join(
+            [
+                "CRITICAL INSTRUCTIONS:",
+                "Based on the df_schema above, write appropriate analysis code.",
+                "- Use the EXACT column names and types from df_schema",
+                "- If ML_CONFIG is provided, follow it EXACTLY for feature selection and preprocessing.",
+            ]
+        )
+    )
+
+    # Add error context if retrying
+    if last_exec and not last_exec.get("ok"):
+        retry_lines: list[str] = ["PREVIOUS ATTEMPT FAILED - FIX THE ERROR:"]
+
         if last_code:
-            prompt += "Previous code that failed:\n"
-            prompt += "```python\n"
-            prompt += last_code
-            prompt += "\n```\n\n"
-        
-        prompt += "Error details:\n"
+            retry_lines.append("Previous code that failed:\n```python\n" + last_code + "\n```")
+
+        retry_lines.append("Error details:")
         if last_exec.get("error_type"):
-            prompt += f"- Error type: {last_exec['error_type']}\n"
+            retry_lines.append(f"- Error type: {last_exec['error_type']}")
         if last_exec.get("error_message"):
-            prompt += f"- Error message: {last_exec['error_message']}\n"
+            retry_lines.append(f"- Error message: {last_exec['error_message']}")
         if last_exec.get("stderr"):
-            prompt += f"- Stderr output:\n{last_exec['stderr']}\n"
-        
-        prompt += "\n"
-        prompt += "IMPORTANT: Analyze the error above and rewrite the code to fix it.\n"
-        prompt += "Do NOT repeat the same mistake!\n"
-        prompt += "="*60 + "\n\n"
+            retry_lines.append(f"- Stderr output:\n{last_exec['stderr']}")
 
-    code = llm.invoke([HumanMessage(content=prompt)]).content
+        retry_lines.append("IMPORTANT: Analyze the error above and rewrite the code to fix it.")
+        retry_lines.append("Do NOT repeat the same mistake!")
 
-    df: pd.DataFrame = state["df"]
+        parts.append("\n".join(retry_lines))
+
+    analysis_prompt = "\n\n".join(parts)
+
+    # Generate analysis code
+    analysis_code = llm.invoke([HumanMessage(content=analysis_prompt)]).content
+
+    # Execute analysis code
     exec_in = ExecPythonInput(
-        code=code,
-        timeout_sec=180,
+        code=analysis_code,
         max_output_chars=20000,
         context={"df": df, "pd": pd, "np": np},
     )
@@ -188,8 +174,7 @@ def run_code_node(state: AgentState) -> dict:
     last_exec = ExecResult.model_validate(exec_out.result.model_dump()).model_dump()
 
     return {
-        "last_code": code,
+        "last_code": analysis_code,
         "last_exec": last_exec,
+        "code_run_count": state.get("code_run_count", 0) + 1,
     }
-
-
